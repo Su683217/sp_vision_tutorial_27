@@ -12,6 +12,17 @@
 int main()
 {
     // TODO: 在这里完成你的代码
+    cv::Mat img = cv::imread("assets/demo.jpg");
 
+    cv::Mat gray;
+    cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+
+    cv::imwrite("gray.jpg", gray);
+
+    cv::circle(gray, cv::Point(400, 300), 50, cv::Scalar(255), 3);
+
+    cv::imshow("homework_su", gray);
+    cv::waitKey(0);
+    
     return 0;
 }
