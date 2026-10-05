@@ -20,8 +20,7 @@ public:
     StatisticsSnapshot snapshot() const;
 
 private:
-    // producer 和多个 worker 线程会同时读写这些计数，统一由 mutex_ 保护。
-    // snapshot() 是 const 成员函数也要加锁，所以声明为 mutable。
+    // 多个线程会同时读写计数，统一用 mutex_ 保护
     mutable std::mutex mutex_;
     int produced_ = 0;
     int processed_ = 0;

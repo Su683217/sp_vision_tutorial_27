@@ -37,24 +37,17 @@ Pipeline::Pipeline(std::unique_ptr<FrameSource> source, PipelineConfig config)
 
 Pipeline::~Pipeline()
 {
-    // RAII：析构时必须回收所有已启动的线程。销毁一个仍可 join 的 std::thread
-    // 会直接调用 std::terminate，而且线程里还在用 this 的成员，会变成悬空访问。
-    //
-    // 正常情况下 producer 读完所有帧后会自己 close() 队列，worker 消费完剩余帧
-    // 后退出，所以直接 wait() 就能把线程依次 join 掉。
-    // 若 producer 从未启动（例如 start() 中途失败），就没人关闭队列，等待中的
-    // worker 会永远卡在 pop() 里，所以这里先补一次 close()。close() 可重复调用。
+    // 析构前回收所有线程（RAII），避免销毁仍在运行的 std::thread
     if (!producer_.joinable())
     {
-        queue_.close();
+        queue_.close(); // producer 未启动时没人关闭队列，在这里补上
     }
     wait();
 }
 
 void Pipeline::start()
 {
-    // 前置条件：start() 只能调用一次。再次调用会给仍可 join 的 producer_ 重新
-    // 赋值（触发 std::terminate），或者让两批线程同时消费同一个队列。
+    // start() 只能调用一次
     if (producer_.joinable() || !workers_.empty())
     {
         throw std::logic_error("Pipeline::start() may only be called once");
@@ -98,8 +91,7 @@ void Pipeline::producerLoop()
         statistics_.onProduced();
         logLine(std::cout, "[Producer] frame " + std::to_string(frame.id));
 
-        // frame 马上会被下一次 next() 整体覆盖，不再需要原来的内容，
-        // 所以用 std::move 把资源直接转交给队列，避免多复制一次 Frame。
+        // frame 之后会被 next() 覆盖，直接转交给队列
         queue_.push(std::move(frame));
     }
     queue_.close();

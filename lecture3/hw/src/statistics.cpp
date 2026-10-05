@@ -15,7 +15,7 @@ namespace
     }
 }
 
-// "读出旧值 -> 加一 -> 写回" 必须作为一个整体完成，lock_guard 离开作用域自动解锁（RAII）
+// 加锁后再读改写，保证每次加一都不会丢失
 void Statistics::onProduced()
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -42,7 +42,7 @@ void Statistics::onCorrupted()
 
 StatisticsSnapshot Statistics::snapshot() const
 {
-    // 加锁后一次性读出四个计数，得到同一时刻的一致快照
+    // 加锁读取，得到一致的快照
     std::lock_guard<std::mutex> lock(mutex_);
     return {produced_, processed_, saved_, corrupted_};
 }
