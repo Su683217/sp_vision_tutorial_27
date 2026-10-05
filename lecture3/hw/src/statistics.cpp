@@ -1,6 +1,7 @@
 #include "statistics.hpp"
 
 #include <chrono>
+#include <mutex>
 #include <thread>
 
 namespace
@@ -14,12 +15,34 @@ namespace
     }
 }
 
-void Statistics::onProduced() { deliberatelySlowIncrement(produced_); }
-void Statistics::onProcessed() { deliberatelySlowIncrement(processed_); }
-void Statistics::onSaved() { deliberatelySlowIncrement(saved_); }
-void Statistics::onCorrupted() { deliberatelySlowIncrement(corrupted_); }
+// "读出旧值 -> 加一 -> 写回" 必须作为一个整体完成，lock_guard 离开作用域自动解锁（RAII）
+void Statistics::onProduced()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    deliberatelySlowIncrement(produced_);
+}
+
+void Statistics::onProcessed()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    deliberatelySlowIncrement(processed_);
+}
+
+void Statistics::onSaved()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    deliberatelySlowIncrement(saved_);
+}
+
+void Statistics::onCorrupted()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    deliberatelySlowIncrement(corrupted_);
+}
 
 StatisticsSnapshot Statistics::snapshot() const
 {
+    // 加锁后一次性读出四个计数，得到同一时刻的一致快照
+    std::lock_guard<std::mutex> lock(mutex_);
     return {produced_, processed_, saved_, corrupted_};
 }
