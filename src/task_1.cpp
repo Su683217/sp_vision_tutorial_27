@@ -45,6 +45,45 @@ int main(int argc, char * argv[])
   while (!exiter.exit()) {
     // Your code start
 
+    // 1. 读取图像，并取得拍摄时刻的云台姿态
+    camera.read(img, t);
+    q = gimbal.q(t);
+    solver.set_R_gimbal2world(q);
+
+    // 2. 识别装甲板
+    auto armors = yolo.detect(img);
+    cv::waitKey(1);  // 刷新 YOLO 的调试窗口
+
+    nlohmann::json data;
+    data["armor_num"] = armors.size();
+
+    // 没有识别到装甲板时不控制云台
+    if (armors.empty()) {
+      gimbal.send(false, false, 0, 0);
+      plotter.plot(data);
+      continue;
+    }
+
+    // 3. 解算装甲板在世界坐标系下的位置
+    auto armor = armors.front();
+    solver.solve(armor);
+
+    // 4. 计算云台目标角度（下位机约定 pitch 向上为负）
+    double yaw = armor.ypd_in_world[0];
+    double pitch = -armor.ypd_in_world[1];
+
+    // 5. 控制云台，不开火
+    gimbal.send(true, false, yaw, pitch);
+
+    // 6. 输出发送给云台的控制命令，以及云台当前角度用于对比（单位：度）
+    auto state = gimbal.state();
+    data["cmd_yaw"] = yaw * 57.3;
+    data["cmd_pitch"] = pitch * 57.3;
+    data["gimbal_yaw"] = state.yaw * 57.3;
+    data["gimbal_pitch"] = state.pitch * 57.3;
+    data["distance"] = armor.ypd_in_world[2];
+    plotter.plot(data);
+
     // Your code end
   }
 
