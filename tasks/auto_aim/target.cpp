@@ -42,8 +42,8 @@ Target::Target(
   Eigen::VectorXd x0{{center_x, 0, center_y, 0, center_z, 0, ypr[0], 0, r, 0, 0}};  //初始化预测量
   Eigen::VectorXd P0_dig_car{
     {1, 64, 1, 64, 1, 64, 0.4, 100, 0.01, 0.01,
-     0}};  // Task_2 TODO: 根据实际情况，调整“后三项”预测量协方差矩阵参数
-  // r、l 的标准差取 0.1 m，让 EKF 能修正半径；整车模型中装甲板高度不使用 h，其协方差保持 0
+     0.01}};  // Task_2 TODO: 根据实际情况，调整“后三项”预测量协方差矩阵参数
+  // r、l、h 的标准差取 0.1 m，让 EKF 能修正两组装甲板的半径和高度差
 
   // Task_3 TODO: 为前哨站建立专有的初始状预测量及其协方差矩阵参数（P0_dig_outpost）
   // 前哨站固定不动、半径已知，速度和半径的协方差取小；l、h 为另两块板相对参考板的高度差，需要估计
@@ -296,14 +296,16 @@ Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
   auto r = (use_l_h) ? x[8] + x[9] : x[8];
   auto armor_x = x[0] - r * std::cos(angle);
   auto armor_y = x[2] - r * std::sin(angle);
+  auto armor_z = (use_l_h) ? x[4] + x[10] : x[4];
 
-  double dh = 0.0;  // 高度差
   // Task_3 TODO: 为前哨站建立专有的高度差计算方法
   // 以 id=0 的板为参考，id=1、id=2 的板分别高出 l、h
-  if (use_outpost_h && id == 1) dh = x[9];
-  if (use_outpost_h && id == 2) dh = x[10];
-
-  auto armor_z = x[4] + dh;  //task_3 tips
+  if (use_outpost_h && id == 1) armor_z = x[4] + x[9];
+  if (use_outpost_h && id == 2) armor_z = x[4] + x[10];
+  /*
+  double dh = 0.0;  // 高度差
+  auto armor_z = x[4] + dh;  // task_3 tips
+  */
 
   return {armor_x, armor_y, armor_z};
 }
