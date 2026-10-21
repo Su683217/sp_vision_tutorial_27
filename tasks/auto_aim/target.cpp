@@ -41,8 +41,9 @@ Target::Target(
   // h: dh2 for outpost / z2 - z1 for vehicles
   Eigen::VectorXd x0{{center_x, 0, center_y, 0, center_z, 0, ypr[0], 0, r, 0, 0}};  //初始化预测量
   Eigen::VectorXd P0_dig_car{
-    {1, 64, 1, 64, 1, 64, 0.4, 100, 0, 0,
+    {1, 64, 1, 64, 1, 64, 0.4, 100, 0.01, 0.01,
      0}};  // Task_2 TODO: 根据实际情况，调整“后三项”预测量协方差矩阵参数
+  // r、l 的标准差取 0.1 m，让 EKF 能修正半径；整车模型中装甲板高度不使用 h，其协方差保持 0
 
   // Task_3 TODO: 为前哨站建立专有的初始状预测量及其协方差矩阵参数（P0_dig_outpost）
 
@@ -89,8 +90,9 @@ void Target::predict(double dt)
   double v1, v2;
 
   // Task_2 TODO: 根据实际情况，调整v1与v2
+  // 靶机位置固定，平移加速度方差保持较小；靶机会切换转速，角加速度方差需调大才能及时跟上
   v1 = 1;           // 加速度方差
-  v2 = 1;           // 角加速度方差
+  v2 = 100;         // 角加速度方差
   double v1_z = 1;  // z轴加速度方差
 
   auto a = dt * dt * dt * dt / 4;
