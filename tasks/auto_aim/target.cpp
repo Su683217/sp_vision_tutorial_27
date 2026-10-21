@@ -46,8 +46,11 @@ Target::Target(
   // r、l 的标准差取 0.1 m，让 EKF 能修正半径；整车模型中装甲板高度不使用 h，其协方差保持 0
 
   // Task_3 TODO: 为前哨站建立专有的初始状预测量及其协方差矩阵参数（P0_dig_outpost）
+  // 前哨站固定不动、半径已知，速度和半径的协方差取小；l、h 为另两块板相对参考板的高度差，需要估计
+  Eigen::VectorXd P0_dig_outpost{{1, 1e-2, 1, 1e-2, 1, 1e-2, 0.4, 100, 1e-4, 1e-2, 1e-2}};
 
   Eigen::Matrix<double, 11, 11> P0 = P0_dig_car.asDiagonal();
+  if (is_layered_outpost()) P0 = P0_dig_outpost.asDiagonal();
 
   // 防止夹角求和出现异常值
   auto x_add = [](const Eigen::VectorXd & a, const Eigen::VectorXd & b) -> Eigen::VectorXd {
@@ -94,6 +97,13 @@ void Target::predict(double dt)
   v1 = 1;           // 加速度方差
   v2 = 100;         // 角加速度方差
   double v1_z = 1;  // z轴加速度方差
+
+  // 前哨站固定不动且匀速旋转，过程噪声取小，使角速度估计更平稳
+  if (is_layered_outpost()) {
+    v1 = 0.1;
+    v2 = 0.1;
+    v1_z = 0.1;
+  }
 
   auto a = dt * dt * dt * dt / 4;
   auto b = dt * dt * dt / 2;
@@ -245,6 +255,16 @@ bool Target::diverged() const
   auto r_ok = ekf_.x[8] > 0.05 && ekf_.x[8] < 0.5;
 
   //Task_3 TODO: 为前哨站建立专有的发散判定条件
+  // 前哨站的 l、h 表示高度差而不是半径差，单独判断
+  if (is_layered_outpost()) {
+    auto outpost_r_ok = ekf_.x[8] > 0.2 && ekf_.x[8] < 0.35;
+    auto dh_ok = std::abs(ekf_.x[9]) < 0.5 && std::abs(ekf_.x[10]) < 0.5;
+    if (outpost_r_ok && dh_ok) return false;
+
+    tools::logger()->debug(
+      "[Target] outpost r={:.3f}, dh1={:.3f}, dh2={:.3f}", ekf_.x[8], ekf_.x[9], ekf_.x[10]);
+    return true;
+  }
 
   auto l_ok = ekf_.x[8] + ekf_.x[9] > 0.05 && ekf_.x[8] + ekf_.x[9] < 0.5;
 
@@ -279,6 +299,9 @@ Eigen::Vector3d Target::h_armor_xyz(const Eigen::VectorXd & x, int id) const
 
   double dh = 0.0;  // 高度差
   // Task_3 TODO: 为前哨站建立专有的高度差计算方法
+  // 以 id=0 的板为参考，id=1、id=2 的板分别高出 l、h
+  if (use_outpost_h && id == 1) dh = x[9];
+  if (use_outpost_h && id == 2) dh = x[10];
 
   auto armor_z = x[4] + dh;  //task_3 tips
 
@@ -304,12 +327,15 @@ Eigen::MatrixXd Target::h_jacobian(const Eigen::VectorXd & x, int id) const
 
   //  Task_3 tips:
   // auto dz_dl = 0.0; // Task_3 TODO: 为前哨站建立专有的雅各比阵计算方法
+  // 与 h_armor_xyz 中的高度差对应：z 对 l、h 的偏导
+  auto dz_dl = (use_outpost_h && id == 1) ? 1.0 : 0.0;
+  if (use_outpost_h) dz_dh = (id == 2) ? 1.0 : 0.0;
 
   // clang-format off
   Eigen::MatrixXd H_armor_xyza{
     {1, 0, 0, 0, 0, 0, dx_da, 0, dx_dr, dx_dl,     0},
     {0, 0, 1, 0, 0, 0, dy_da, 0, dy_dr, dy_dl,     0},
-    {0, 0, 0, 0, 1, 0,     0, 0,     0,     0, dz_dh},
+    {0, 0, 0, 0, 1, 0,     0, 0,     0, dz_dl, dz_dh},
     {0, 0, 0, 0, 0, 0,     1, 0,     0,     0,     0}
   };
   // clang-format on
