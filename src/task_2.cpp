@@ -167,6 +167,7 @@ int main(int argc, char * argv[])
     data["r"] = x[8];
     data["distance"] = aim_xyza.head(3).norm();
     data["fly_time"] = fly_time;
+    data["bullet_speed"] = bullet_speed;
     plotter.plot(data);
 
     // Your code end
