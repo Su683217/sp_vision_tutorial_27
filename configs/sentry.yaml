@@ -48,3 +48,6 @@ com_port: "/dev/gimbal"
 predict_delay: 0.1 # s 识别、通信、发弹的总延迟
 fire_threshold: 1.0 # degree 云台 yaw 与目标的误差小于该值时开火
 fire_interval: 0.1 # s 两次开火的最小间隔
+spin_threshold: 1 # rad/s 转速超过该值时瞄中心等板；设为 100 则始终跟随装甲板
+fire_angle: 10 # degree 瞄中心时，预测装甲板转到距正对小于该角度时开火
+max_armor_angle: 25 # degree 跟随装甲板时，预测装甲板偏离正对超过该角度不开火

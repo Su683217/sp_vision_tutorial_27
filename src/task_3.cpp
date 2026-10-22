@@ -52,10 +52,14 @@ int main(int argc, char * argv[])
   auto predict_delay = tools::read<double>(yaml, "predict_delay");
   auto fire_threshold = tools::read<double>(yaml, "fire_threshold") / 57.3;
   auto fire_interval = tools::read<double>(yaml, "fire_interval");
+  auto spin_threshold = tools::read<double>(yaml, "spin_threshold");
+  auto fire_angle = tools::read<double>(yaml, "fire_angle") / 57.3;
+  auto max_armor_angle = tools::read_or<double>(yaml, "max_armor_angle", 25.0) / 57.3;
 
   auto_aim::Target target;
   bool tracking = false;
   std::chrono::steady_clock::time_point track_start, last_seen, last_fire;
+  double last_facing_error = 0;
 
   while (!exiter.exit()) {
     // Your code start
@@ -113,7 +117,12 @@ int main(int argc, char * argv[])
     auto bullet_speed = gimbal.state().bullet_speed;
     if (bullet_speed < 10) bullet_speed = 23;  // 下位机未上报弹速时使用默认值
 
+    // 转速超过 spin_threshold 时瞄准旋转中心，等装甲板转到正对时开火，避免云台来回扫动
+    auto w = target.ekf_x()[7];
+    bool spinning = std::abs(w) > spin_threshold;
+
     Eigen::Vector4d aim_xyza;
+    double center_yaw = 0;
     double fly_time = 0;
     double traj_pitch = 0;
     bool solvable = true;
@@ -122,7 +131,8 @@ int main(int argc, char * argv[])
       future.predict(predict_delay + fly_time);
 
       auto center = future.ekf_x();
-      auto center_yaw = std::atan2(center[2], center[0]);
+      Eigen::Vector2d center_xy{center[0], center[2]};
+      center_yaw = std::atan2(center[2], center[0]);
       double min_error = 1e10;
       for (const auto & xyza : future.armor_xyza_list()) {
         auto error = std::abs(tools::limit_rad(xyza[3] - center_yaw));
@@ -132,7 +142,10 @@ int main(int argc, char * argv[])
         }
       }
 
-      tools::Trajectory traj(bullet_speed, aim_xyza.head(2).norm(), aim_xyza[2]);
+      // 瞄中心时，装甲板转到正对时位于中心与我方的连线上，距离为中心距离减去半径
+      auto radius = (aim_xyza.head(2) - center_xy).norm();
+      auto aim_distance = spinning ? center_xy.norm() - radius : aim_xyza.head(2).norm();
+      tools::Trajectory traj(bullet_speed, aim_distance, aim_xyza[2]);
       solvable = !traj.unsolvable;
       if (!solvable) break;
       fly_time = traj.fly_time;
@@ -146,7 +159,11 @@ int main(int argc, char * argv[])
     }
 
     // 5. 计算云台目标角度（下位机约定 pitch 向上为负）
-    double yaw = tools::limit_rad(std::atan2(aim_xyza[1], aim_xyza[0]) + yaw_offset);
+    auto aim_yaw = spinning ? center_yaw : std::atan2(aim_xyza[1], aim_xyza[0]);
+    double yaw = tools::limit_rad(aim_yaw + yaw_offset);
+    // 换算成离云台当前朝向最近的等价角度，避免目标在 ±180° 附近时云台反向转一圈
+    auto state_yaw = gimbal.state().yaw;
+    yaw = state_yaw + tools::limit_rad(yaw - state_yaw);
     double pitch = -(traj_pitch + pitch_offset);
 
     // 6. 开火判断：跟踪超过 1 s 使转速收敛，且云台 yaw 已对准瞄准点
@@ -154,6 +171,15 @@ int main(int argc, char * argv[])
     auto yaw_error = tools::limit_rad(gimbal_yaw - yaw);
     bool fire = target.is_converged() && tools::delta_time(t, track_start) > 1.0 &&
                 std::abs(yaw_error) < fire_threshold;
+
+    // 瞄中心时，还要求预测的装甲板转到正对附近，或这一帧刚好转过正对
+    // facing_error 沿转动方向为正：小于 0 表示还没转到正对，大于 0 表示已经转过
+    auto facing_error = tools::limit_rad(aim_xyza[3] - center_yaw) * (w > 0 ? 1 : -1);
+    bool facing = std::abs(facing_error) < fire_angle || (last_facing_error < 0 && facing_error >= 0);
+    last_facing_error = facing_error;
+    if (spinning) fire = fire && facing;
+    // 跟随装甲板时，预测的装甲板转得太斜（快要转走）就不开火，避免打空或弹开
+    if (!spinning) fire = fire && std::abs(facing_error) < max_armor_angle;
 
     // 下位机每收到一次开火指令发射一发，两次开火至少间隔 fire_interval
     fire = fire && tools::delta_time(t, last_fire) > fire_interval;
@@ -168,6 +194,8 @@ int main(int argc, char * argv[])
     data["gimbal_yaw"] = gimbal_yaw * 57.3;
     data["yaw_error"] = yaw_error * 57.3;
     data["fire"] = fire ? 1 : 0;
+    data["spinning"] = spinning ? 1 : 0;
+    data["facing_error"] = facing_error * 57.3;
     data["w"] = x[7];
     data["r"] = x[8];
     data["distance"] = aim_xyza.head(3).norm();
