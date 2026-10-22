@@ -51,10 +51,11 @@ int main(int argc, char * argv[])
   auto pitch_offset = tools::read<double>(yaml, "pitch_offset") / 57.3;
   auto predict_delay = tools::read<double>(yaml, "predict_delay");
   auto fire_threshold = tools::read<double>(yaml, "fire_threshold") / 57.3;
+  auto fire_interval = tools::read<double>(yaml, "fire_interval");
 
   auto_aim::Target target;
   bool tracking = false;
-  std::chrono::steady_clock::time_point track_start, last_seen;
+  std::chrono::steady_clock::time_point track_start, last_seen, last_fire;
 
   while (!exiter.exit()) {
     // Your code start
@@ -153,6 +154,10 @@ int main(int argc, char * argv[])
     auto yaw_error = tools::limit_rad(gimbal_yaw - yaw);
     bool fire = target.is_converged() && tools::delta_time(t, track_start) > 1.0 &&
                 std::abs(yaw_error) < fire_threshold;
+
+    // 下位机每收到一次开火指令发射一发，两次开火至少间隔 fire_interval
+    fire = fire && tools::delta_time(t, last_fire) > fire_interval;
+    if (fire) last_fire = t;
 
     gimbal.send(true, fire, yaw, pitch);
 

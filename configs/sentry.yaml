@@ -47,3 +47,4 @@ com_port: "/dev/gimbal"
 #####-----任务三参数-----#####
 predict_delay: 0.1 # s 识别、通信、发弹的总延迟
 fire_threshold: 1.0 # degree 云台 yaw 与目标的误差小于该值时开火
+fire_interval: 0.1 # s 两次开火的最小间隔

@@ -1,6 +1,6 @@
 enemy_color: "red"
 # enemy_color: "blue"
-rotation_angle: 0
+rotation_angle: 180
 
 #####-----神经网络参数-----#####
 yolo_name: yolov5
@@ -16,8 +16,8 @@ roi:
 use_roi: false
 threshold: 100
 
-yaw_offset: 2 # degree -2.5
-pitch_offset: 6.5 # degree 2
+yaw_offset: 0.7 # degree -2.5
+pitch_offset: -9 # degree 2
 
 camera_name: "hikrobot"
 exposure_ms: 2.5
@@ -44,4 +44,5 @@ com_port: "/dev/gimbal"
 
 #####-----任务二参数-----#####
 predict_delay: 0.1 # s 识别、通信、发弹的总延迟
-fire_threshold: 1.0 # degree 云台 yaw 与目标的误差小于该值时开火
+fire_threshold: 0.7 # degree 云台 yaw 与目标的误差小于该值时开火
+fire_interval: 0.5 # s 两次开火的最小间隔
