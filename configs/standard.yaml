@@ -43,9 +43,12 @@ t_camera2gimbal: [0.041545038711890976, 0.002043263447746746, 0.0926485489073881
 com_port: "/dev/gimbal"
 
 #####-----任务二参数-----#####
-predict_delay: 0.085 # s 识别、通信、发弹的总延迟
+predict_delay: 0.1 # s 识别、通信、发弹的总延迟
 fire_threshold: 1.0 # degree 云台 yaw 与目标的误差小于该值时开火
 fire_interval: 0.5 # s 两次开火的最小间隔
-spin_threshold: 100 # rad/s 转速超过该值时瞄中心等板；设为 1 启用，设为 100 则始终跟随装甲板
+spin_threshold: 6 # rad/s 转速超过该值时瞄中心等板；设为 1 启用，设为 100 则始终跟随装甲板
 fire_angle: 5 # degree 瞄中心时，预测装甲板转到距正对小于该角度时开火
 max_armor_angle: 20 # degree 跟随装甲板时，预测装甲板偏离正对超过该角度不开火
+aligned_time: 0.03 # s 云台持续对准超过该时间才开火，设为 0 则不限制
+default_bullet_speed: 23 # m/s 下位机未上报弹速时使用的弹速
+v2: 20 # 整车模型角加速度方差，越小 w 越平滑，但换挡后跟上越慢

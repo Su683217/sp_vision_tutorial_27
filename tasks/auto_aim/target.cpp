@@ -95,7 +95,7 @@ void Target::predict(double dt)
   // Task_2 TODO: 根据实际情况，调整v1与v2
   // 靶机位置固定，平移加速度方差保持较小；靶机会切换转速，角加速度方差需调大才能及时跟上
   v1 = 1;           // 加速度方差
-  v2 = 20;          // 角加速度方差
+  v2 = v2_;         // 角加速度方差，默认 20，可通过 set_v2 修改
   double v1_z = 1;  // z轴加速度方差
 
   // 前哨站固定不动且匀速旋转，过程噪声取小，使角速度估计更平稳
@@ -233,6 +233,8 @@ void Target::update_ypda(const Armor & armor, int id)
 
   ekf_.update(z, H, R, h, z_subtract);
 }
+
+void Target::set_v2(double v2) { v2_ = v2; }
 
 Eigen::VectorXd Target::ekf_x() const { return ekf_.x; }
 

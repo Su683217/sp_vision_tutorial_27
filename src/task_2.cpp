@@ -1,4 +1,7 @@
 #include <chrono>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
 #include <opencv2/opencv.hpp>
 
 #include "io/camera.hpp"
@@ -55,11 +58,27 @@ int main(int argc, char * argv[])
   auto spin_threshold = tools::read<double>(yaml, "spin_threshold");
   auto fire_angle = tools::read<double>(yaml, "fire_angle") / 57.3;
   auto max_armor_angle = tools::read_or<double>(yaml, "max_armor_angle", 25.0) / 57.3;
+  auto aligned_time = tools::read_or<double>(yaml, "aligned_time", 0.03);
+  auto default_bullet_speed = tools::read_or<double>(yaml, "default_bullet_speed", 23.0);
+  auto v2 = tools::read_or<double>(yaml, "v2", 20.0);
 
   auto_aim::Target target;
   bool tracking = false;
   std::chrono::steady_clock::time_point track_start, last_seen, last_fire;
   double last_facing_error = 0;
+  bool was_aligned = false;
+  std::chrono::steady_clock::time_point aligned_since;
+
+  // 每帧数据保存到 logs 目录，便于离线逐发分析
+  std::filesystem::create_directories("logs");
+  auto now = std::time(nullptr);
+  char log_name[64];
+  std::strftime(log_name, sizeof(log_name), "logs/task_2_%Y%m%d_%H%M%S.csv", std::localtime(&now));
+  std::ofstream log_file(log_name);
+  log_file << "time,armor_num,w,r,distance,cmd_yaw,cmd_pitch,gimbal_yaw,yaw_error,yaw_vel,"
+              "facing_error,spinning,fire,bullet_speed\n";
+  tools::logger()->info("[Log] 数据保存到 {}", log_name);
+  auto start_time = std::chrono::steady_clock::now();
 
   while (!exiter.exit()) {
     // Your code start
@@ -86,6 +105,7 @@ int main(int argc, char * argv[])
       solver.solve(*armor);
       if (!tracking) {
         target = auto_aim::Target(*armor, t);
+        target.set_v2(v2);
         tracking = true;
         track_start = t;
       } else {
@@ -107,6 +127,7 @@ int main(int argc, char * argv[])
     data["tracking"] = tracking ? 1 : 0;
 
     if (!tracking) {
+      was_aligned = false;
       gimbal.send(false, false, 0, 0);
       plotter.plot(data);
       continue;
@@ -115,7 +136,7 @@ int main(int argc, char * argv[])
     // 4. 预测子弹到达时整车的状态，选出最正对我们的装甲板作为瞄准点
     // 飞行时间取决于瞄准点，瞄准点又取决于飞行时间，迭代几次求解
     auto bullet_speed = gimbal.state().bullet_speed;
-    if (bullet_speed < 10) bullet_speed = 23;  // 下位机未上报弹速时使用默认值
+    if (bullet_speed < 10) bullet_speed = default_bullet_speed;  // 下位机未上报弹速时使用默认值
 
     // 转速超过 spin_threshold 时瞄准旋转中心，等装甲板转到正对时开火，避免云台来回扫动
     auto w = target.ekf_x()[7];
@@ -153,6 +174,7 @@ int main(int argc, char * argv[])
     }
 
     if (!solvable) {
+      was_aligned = false;
       gimbal.send(false, false, 0, 0);
       plotter.plot(data);
       continue;
@@ -169,13 +191,18 @@ int main(int argc, char * argv[])
     // 6. 开火判断：跟踪超过 1 s 使转速收敛，且云台 yaw 已对准瞄准点
     auto gimbal_yaw = tools::eulers(q, 2, 1, 0)[0];
     auto yaw_error = tools::limit_rad(gimbal_yaw - yaw);
-    bool fire = target.is_converged() && tools::delta_time(t, track_start) > 1.0 &&
-                std::abs(yaw_error) < fire_threshold;
+    // 云台持续对准超过 aligned_time 才算稳定，避免云台甩过目标的瞬间开火
+    bool aligned = std::abs(yaw_error) < fire_threshold;
+    if (aligned && !was_aligned) aligned_since = t;
+    was_aligned = aligned;
+    bool fire = target.is_converged() && tools::delta_time(t, track_start) > 1.0 && aligned &&
+                tools::delta_time(t, aligned_since) >= aligned_time;
 
     // 瞄中心时，还要求预测的装甲板转到正对附近，或这一帧刚好转过正对
     // facing_error 沿转动方向为正：小于 0 表示还没转到正对，大于 0 表示已经转过
     auto facing_error = tools::limit_rad(aim_xyza[3] - center_yaw) * (w > 0 ? 1 : -1);
-    bool facing = std::abs(facing_error) < fire_angle || (last_facing_error < 0 && facing_error >= 0);
+    bool facing =
+      std::abs(facing_error) < fire_angle || (last_facing_error < 0 && facing_error >= 0);
     last_facing_error = facing_error;
     if (spinning) fire = fire && facing;
     // 跟随装甲板时，预测的装甲板转得太斜（快要转走）就不开火，避免打空或弹开
@@ -202,6 +229,12 @@ int main(int argc, char * argv[])
     data["fly_time"] = fly_time;
     data["bullet_speed"] = bullet_speed;
     plotter.plot(data);
+
+    log_file << tools::delta_time(t, start_time) << ',' << armors.size() << ',' << x[7] << ','
+             << x[8] << ',' << aim_xyza.head(3).norm() << ',' << yaw * 57.3 << ','
+             << pitch * 57.3 << ',' << gimbal_yaw * 57.3 << ',' << yaw_error * 57.3 << ','
+             << gimbal.state().yaw_vel * 57.3 << ',' << facing_error * 57.3 << ','
+             << spinning << ',' << fire << ',' << bullet_speed << '\n';
 
     // Your code end
   }

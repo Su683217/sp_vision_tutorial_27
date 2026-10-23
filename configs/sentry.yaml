@@ -51,3 +51,5 @@ fire_interval: 0.1 # s 两次开火的最小间隔
 spin_threshold: 1 # rad/s 转速超过该值时瞄中心等板；设为 100 则始终跟随装甲板
 fire_angle: 10 # degree 瞄中心时，预测装甲板转到距正对小于该角度时开火
 max_armor_angle: 25 # degree 跟随装甲板时，预测装甲板偏离正对超过该角度不开火
+aligned_time: 0.03 # s 云台持续对准超过该时间才开火，设为 0 则不限制
+default_bullet_speed: 23 # m/s 下位机未上报弹速时使用的弹速

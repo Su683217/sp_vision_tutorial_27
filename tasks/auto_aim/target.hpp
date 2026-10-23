@@ -30,6 +30,7 @@ public:
 
   void predict(std::chrono::steady_clock::time_point t);
   void predict(double dt);
+  void set_v2(double v2);  // 设置整车模型的角加速度方差
   void update(const Armor & armor);
 
   Eigen::VectorXd ekf_x() const;
@@ -47,6 +48,7 @@ public:
   bool checkinit();
 
 private:
+  double v2_ = 20;
   int armor_num_;
   int switch_count_;
   int update_count_;
